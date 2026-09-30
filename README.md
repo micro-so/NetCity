@@ -15,17 +15,18 @@ Everything is drawn in code as pixel art — no image assets, no build step.
 ## Run it
 
 ```bash
-python3 -m http.server 8761
+npm install
+npm run dev
 ```
 
-Open http://localhost:8761. Add `?map=sf` or `?map=nyc` to jump to a map.
+Open http://localhost:8762. Add `?map=sf` or `?map=nyc` to jump to a map. (Demo mode also works from any static server, e.g. `python3 -m http.server`.)
 
 It starts in **demo mode** with a made-up network. Every name, company and email in the demo is fictional.
 
 ## Connect your real network (Micro Blocks)
 
 1. Get an API key and Team ID in Micro: **Settings → API** ([sign up](https://app.micro.so/login?intent=blocks)).
-2. Deploy to Vercel (or run `vercel dev`) with these environment variables:
+2. Put these in `.env` for `npm run dev`, or set them on Vercel:
 
    ```bash
    MICRO_API_KEY=...
@@ -36,7 +37,12 @@ It starts in **demo mode** with a made-up network. Every name, company and email
 
 3. Open the city with `?real` (or pick **My Micro network** in City Hall). The browser calls `/api/city`, a small serverless function that reads your organizations and contacts from Micro. The key stays on the server.
 
-The function is **read-only** — it never writes to Micro.
+The function is **read-only** — it never writes to Micro. It uses [`@micro-so/sdk`](https://www.npmjs.com/package/@micro-so/sdk) and builds the city from:
+
+- **organizations** you've interacted with in the last 30 days (up to `NETCITY_MAX_COMPANIES`, default 300), with their `about`/`summary`;
+- **identities** — one per real person, found through the contacts at those companies — with `summary`, `about`, title and relationship strength.
+
+The first build can take a few minutes on a large network. After that the result is cached (in the OS temp folder) and refreshed in the background, so the city opens in seconds.
 
 ## Files
 

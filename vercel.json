@@ -1,5 +1,6 @@
 {
   "functions": {
-    "api/city.js": { "maxDuration": 300 }
+    "api/city.js": { "maxDuration": 60 },
+    "api/org.js": { "maxDuration": 120 }
   }
 }

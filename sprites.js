@@ -735,7 +735,7 @@
   const styleOf = (company) => (ARCH[company.industry] && company.industry !== 'Other' ? company.industry : MIXED[hash(company.id) % MIXED.length]);
 
   function makeBuilding(company) {
-    const n = company.people.length;
+    const n = company.count || company.people.length;
     const F = floorsOf(n);
     const H = F * 6 + 80;
     const arch = ARCH[styleOf(company)];

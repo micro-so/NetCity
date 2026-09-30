@@ -144,8 +144,26 @@
     return /hot/.test(s) ? 95 : /warm/.test(s) ? 75 : /average/.test(s) ? 50 : /cool/.test(s) ? 30 : /cold/.test(s) ? 12 : /very strong|strongest/.test(s) ? 95 : /strong/.test(s) ? 80 : /medium|moderate|good/.test(s) ? 55 : /very weak|cold/.test(s) ? 12 : /weak/.test(s) ? 30 : null;
   }
 
-  // Turn Micro-shaped responses into the game's model.
-  function normalize(raw, now) {
+  function makePerson(c, co) {
+    const p = c.properties || {};
+    return {
+      id: c.id,
+      name: p.full_name || p.email || 'Someone',
+      title: p.title || '',
+      email: p.email || null,
+      linkedin: p.linkedin || null,
+      summary: p.summary || null,
+      about: p.about || null,
+      strength: strengthOf(p.relationship_strength),
+      lastInteraction: p.last_interaction_date ? Date.parse(p.last_interaction_date) : 0,
+      company: co,
+    };
+  }
+
+  // Turn Micro-shaped responses into the game's model. In real mode a company
+  // arrives with a head count and only its recently active people; the rest
+  // load when its building is opened (see loadOrg).
+  function normalize(raw, now, complete) {
     const companies = new Map();
     for (const o of raw.organizations.data) {
       const p = o.properties || {};
@@ -162,6 +180,8 @@
         about: p.about || null,
         lastInteraction: p.last_interaction_date ? Date.parse(p.last_interaction_date) : 0,
         people: [],
+        count: p.people_count || 0,
+        loaded: !!complete,
       });
     }
     const people = [];
@@ -171,24 +191,14 @@
       const companyId = companyIdOf(p);
       const co = companies.get(companyId);
       if (!co) continue;
-      const person = {
-        id: c.id,
-        name: p.full_name || p.email || 'Someone',
-        title: p.title || '',
-        email: p.email || null,
-        linkedin: p.linkedin || null,
-        summary: p.summary || null,
-        about: p.about || null,
-        strength: strengthOf(p.relationship_strength),
-        lastInteraction: p.last_interaction_date ? Date.parse(p.last_interaction_date) : 0,
-        company: co,
-      };
+      const person = makePerson(c, co);
       co.people.push(person);
       co.lastInteraction = Math.max(co.lastInteraction, person.lastInteraction);
       people.push(person);
     }
     const cutoff = now - 30 * DAY;
-    const buildings = [...companies.values()].filter((c) => c.people.length && c.lastInteraction >= cutoff);
+    for (const c of companies.values()) c.count = Math.max(c.count, c.people.length);
+    const buildings = [...companies.values()].filter((c) => c.count > 0 && c.lastInteraction >= cutoff);
     for (const b of buildings) b.people.sort((a, b2) => b2.lastInteraction - a.lastInteraction);
     const walkers = people.slice().sort((a, b) => b.lastInteraction - a.lastInteraction).slice(0, 100);
     return { buildings, people, walkers };
@@ -207,7 +217,7 @@
         const body = await res.json().catch(() => ({}));
         throw new Error('Could not load Micro data (' + res.status + '). ' + (body.error || ''));
       }
-      const city = normalize(await res.json(), now);
+      const city = normalize(await res.json(), now, false);
       // route logos through the same-origin proxy so they can be painted into sprites
       for (const b of city.buildings) {
         if (!b.logo && !b.domain) continue;
@@ -219,8 +229,37 @@
       }
       return { ...city, now, demo: false };
     }
-    return { ...normalize(mockRaw(now), now), now, demo: true };
+    return { ...normalize(mockRaw(now), now, true), now, demo: true };
   }
 
-  window.NetCityData = { load, rng, DAY };
+  // Load everyone at one company (identities), merging with the people we
+  // already have so walkers keep their identity.
+  const orgLoads = new Map();
+  function loadOrg(company) {
+    if (company.loaded) return Promise.resolve(company);
+    if (orgLoads.has(company.id)) return orgLoads.get(company.id);
+    const p = (async () => {
+      let token = null;
+      try { token = localStorage.getItem('netcity.token'); } catch { /* private mode */ }
+      const res = await fetch('/api/org?id=' + encodeURIComponent(company.id), { headers: token ? { 'x-netcity-token': token } : {} });
+      if (!res.ok) throw new Error('Could not load people (' + res.status + ')');
+      const json = await res.json();
+      // Merge with the walkers we already have, one entry per person (Micro can hold
+      // duplicate identities for the same name).
+      const key = (x) => (x.name || '').trim().toLowerCase() || x.id;
+      const byKey = new Map(company.people.map((x) => [key(x), x]));
+      for (const c of json.identities.data) {
+        const person = makePerson(c, company);
+        if (!byKey.has(key(person))) byKey.set(key(person), person);
+      }
+      company.people = [...byKey.values()].sort((a, b) => b.lastInteraction - a.lastInteraction);
+      if (company.people.length) company.count = company.people.length;
+      company.loaded = true;
+      return company;
+    })().finally(() => orgLoads.delete(company.id));
+    orgLoads.set(company.id, p);
+    return p;
+  }
+
+  window.NetCityData = { load, loadOrg, rng, DAY };
 })();

@@ -92,7 +92,7 @@
   // ---------- floor plans ----------
   const MAX_DESKS = 48;
   function plan(company, th) {
-    const n = Math.min(MAX_DESKS, company.people.length);
+    const n = Math.min(MAX_DESKS, Math.max(company.count || 0, company.people.length));
     const seats = [], furn = [];
     let RW, RD;
     if (th.layout === 'boardroom' || th.layout === 'communal') {
@@ -331,9 +331,16 @@
 
   // ---------- office window ----------
   function open(company, ctx, selected = null) {
-    const n = company.people.length;
+    const n = company.count || company.people.length;
     const th = THEMES[S.styleOf(company)] || THEME_DEFAULT;
     const win = makeWindow('office', `<i style="background:${th.trim}"></i>${esc(company.name)}<em>${esc(th.name)} · ${n} ${n === 1 ? 'person' : 'people'} you know</em>`);
+    win.dataset.company = company.id;
+    // People at this company load on first open (identities are slow to look up on Micro).
+    if (!company.loaded) {
+      window.NetCityData.loadOrg(company)
+        .then(() => { if (win.isConnected && win.dataset.company === company.id) open(company, ctx, selected); })
+        .catch((e) => { const el = win.querySelector('.loading'); if (el) el.textContent = e.message; });
+    }
     const body = win.querySelector('.body');
     body.className = 'body office-body';
     body.innerHTML = '<div class="view"></div><div class="side"></div>';
@@ -381,8 +388,9 @@
       company.domain && ['Domain', company.domain],
       ['Last touch', ctx.ago(company.lastInteraction)],
     ].filter(Boolean);
+    const waiting = company.loaded ? '' : `<div class="loading">Finding the ${n} ${n === 1 ? 'person' : 'people'} at ${esc(company.name)}… this can take ~10s the first time.</div>`;
     side.innerHTML = `<div class="facts">${bio(company)}${facts.map(([k, v]) => `<div class="row"><span class="k">${k}</span><span>${esc(v)}</span></div>`).join('')}</div>
-      <div class="plist">${company.people.map((p, i) =>
+      ${waiting}<div class="plist">${company.people.map((p, i) =>
         `<button data-i="${i}"><span class="dot" style="background:${S.looks(p).top}"></span><span class="pn">${esc(p.name)}<small>${esc(p.title)}</small></span><span class="ago">${esc(ctx.ago(p.lastInteraction))}</span></button>`).join('')}</div>
       <div class="hint">Click anyone at their desk · <span class="g">▮</span> talked this week</div>`;
     side.querySelectorAll('.plist button').forEach((b) => { b.onclick = () => open(company, ctx, company.people[+b.dataset.i]); });

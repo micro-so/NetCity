@@ -40,7 +40,7 @@
     groups.get(b.industry).push(b);
   }
   const districts = [...groups.entries()]
-    .map(([name, list]) => { list.sort((a, b) => b.people.length - a.people.length); return { name, list }; })
+    .map(([name, list]) => { list.sort((a, b) => b.count - a.count); return { name, list }; })
     .sort((a, b) => b.list.length - a.list.length);
 
   function reserve(BW, BH) {
@@ -889,7 +889,7 @@
           : hover.civic === 'landmark' ? `<b>${esc(hover.name)}</b><span>Landmark · ${esc(MAP.name)}</span>`
           : `<b>Statue of ${esc(window.Civic.mayorName())}</b><span>Mayor of ${esc(MAP.name)}</span>`)
         : hover.people
-        ? `<b>${esc(hover.name)}</b><span>${hover.people.length} ${hover.people.length === 1 ? 'person' : 'people'} · ${esc(hover.industry)}</span>`
+        ? `<b>${esc(hover.name)}</b><span>${hover.count} ${hover.count === 1 ? 'person' : 'people'} · ${esc(hover.industry)}</span>`
         : `<b>${esc(hover.person.name)}</b><span>${esc([hover.person.title, hover.person.company.name].filter(Boolean).join(' · '))}</span>`;
     } else tip.style.display = 'none';
   });
@@ -950,7 +950,7 @@
   document.getElementById('date').textContent = new Date(now).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   if (MAP_ID !== 'default') document.querySelector('.brand-s').textContent = `Your network, zoned · ${MAP.name}`;
   document.getElementById('modeChip').style.display = data.demo ? '' : 'none';
-  const known = buildings.reduce((s, b) => s + b.people.length, 0);
+  const known = buildings.reduce((s, b) => s + b.count, 0);
   document.getElementById('stats').innerHTML =
     `<span><b>${buildings.length}</b> companies</span><span><b>${known}</b> people</span><span><b>${walkers.length}</b> out & about</span>`;
 

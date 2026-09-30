@@ -42,7 +42,12 @@ The function is **read-only** — it never writes to Micro. It uses [`@micro-so/
 - **organizations** you've interacted with in the last 30 days (up to `NETCITY_MAX_COMPANIES`, default 300), with their `about`/`summary`;
 - **identities** — one per real person, found through the contacts at those companies — with `summary`, `about`, title and relationship strength.
 
-The first build can take a few minutes on a large network. After that the result is cached (in the OS temp folder) and refreshed in the background, so the city opens in seconds.
+How it loads, and why:
+
+- **On open:** companies plus a head count for each (one fast contacts query per company), and the most recently active identities as walkers. About 45s the very first time on a large network; after that it's served from cache (OS temp folder) and refreshed in the background.
+- **On click:** a building's identities are looked up when you open it (~8s the first time, then cached). The dev server also warms buildings in the background, biggest first.
+
+Why not load every identity up front: on Micro today, filtering identities by their contacts (`email_addresses`) scans the identity table (~7s per query regardless of list size), and cursor pages get ~0.6s slower each page. Contacts filtered by company are fast (~0.2s/page), so the city is sized from contacts and identities load per building. Requests are throttled to 8/s with backoff to stay under Micro's 10 req/s limit.
 
 ## Files
 
@@ -54,7 +59,9 @@ The first build can take a few minutes on a large network. After that the result
 | `game.js` | Map layout, terrain, rendering, street life, whales, input |
 | `office.js` | Office interiors and person cards |
 | `civic.js` | City Hall settings and the photo → bronze statue |
-| `api/city.js` | Serverless proxy to the Micro Blocks API |
+| `lib/micro.js` | Micro Blocks access via the SDK: city build, per-company people, throttling, caching |
+| `api/city.js` | `/api/city`: companies, head counts, walkers |
+| `api/org.js` | `/api/org?id=`: one company's identities, loaded when a building is opened |
 | `api/logo.js` | Same-origin logo proxy so real logos can be painted onto roofs |
 
 ## License

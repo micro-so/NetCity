@@ -14,14 +14,14 @@ try {
 } catch { /* no .env: demo mode still works */ }
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.svg': 'image/svg+xml' };
-const api = { '/api/city': require('./api/city.js'), '/api/logo': require('./api/logo.js') };
+const api = { '/api/city': require('./api/city.js'), '/api/org': require('./api/org.js'), '/api/logo': require('./api/logo.js') };
 
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (api[url.pathname]) return api[url.pathname](req, res);
   const file = path.join(root, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname));
   const rel = path.relative(root, file);
-  if (rel.startsWith('..') || path.isAbsolute(rel) || /(^|[\\/])(\.[^\\/]*|node_modules|api|package(-lock)?\.json)([\\/]|$)/.test(rel)) { res.statusCode = 404; return res.end(); }
+  if (rel.startsWith('..') || path.isAbsolute(rel) || /(^|[\\/])(\.[^\\/]*|node_modules|api|lib|package(-lock)?\.json)([\\/]|$)/.test(rel)) { res.statusCode = 404; return res.end(); }
   fs.readFile(file, (err, buf) => {
     if (err) { res.statusCode = 404; return res.end('not found'); }
     res.setHeader('Content-Type', TYPES[path.extname(file)] || 'application/octet-stream');

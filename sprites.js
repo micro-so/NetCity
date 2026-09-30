@@ -285,7 +285,8 @@
   }
 
   const center = (w, d) => [(2 - w) / 2, (2 - d) / 2];
-  const floorsOf = (n) => (n <= 30 ? n : 30 + Math.round((n - 30) / 2));
+  // floors = people you know, growing logarithmically past 30 so giants don't break the skyline
+  const floorsOf = (n) => (n <= 30 ? n : Math.min(70, 30 + Math.round(14 * Math.log(n / 30))));
 
   // ---------- architecture by industry ----------
   const ARCH = {
@@ -729,11 +730,15 @@
     return best;
   }
 
+  // Companies without a known sector still get real architecture, picked per company.
+  const MIXED = ['Enterprise SaaS', 'Consumer', 'Media', 'Fintech', 'Developer Tools', 'Healthcare', 'Climate'];
+  const styleOf = (company) => (ARCH[company.industry] && company.industry !== 'Other' ? company.industry : MIXED[hash(company.id) % MIXED.length]);
+
   function makeBuilding(company) {
     const n = company.people.length;
     const F = floorsOf(n);
     const H = F * 6 + 80;
-    const arch = ARCH[company.industry] || ARCH.Other;
+    const arch = ARCH[styleOf(company)];
     const O = { ox: 56, oy: H + 40 };
     // pass 1: find the roof; pass 2: draw for real with the logo painted on it
     const probe = newLayer(112, H + 80);
@@ -1302,6 +1307,6 @@
   window.Sprites = {
     HW, HH, TH, FLOOR, mix, shade, mat, hash, iso, diamond, diamondFn, disk, slopeRect, isoBox, faceRect,
     newLayer, finalize, nightify, NIGHT, NIGHT_SOFT, makeBuilding, makeTree, makeLamp, makeBench, makeFountain, makeBoat,
-    makeCar, CAR_COLORS, makeLogo, loadLogos, makeCityHall, makeStatue, bronzeBust, makeBridge, makeFiller, makeHill, makeIsland, makeLandmark, looks, makeWalker, drawSitter, drawWalkerPx, pickR,
+    makeCar, CAR_COLORS, makeLogo, loadLogos, makeCityHall, makeStatue, bronzeBust, makeBridge, makeFiller, makeHill, makeIsland, makeLandmark, styleOf, looks, makeWalker, drawSitter, drawWalkerPx, pickR,
   };
 })();

@@ -68,6 +68,9 @@
     return c;
   }
 
+  // Micro's summary (AI-written) first, falling back to the profile's about text.
+  const bio = (x) => { const t = x.summary || x.about; return t ? `<p class="bio">${esc(t.length > 320 ? t.slice(0, 317) + '…' : t)}</p>` : ''; };
+
   function personCard(p, ctx, extra = '') {
     const strength = p.strength != null
       ? `<div class="row"><span class="k">Relationship</span><span class="meter"><i style="width:${p.strength}%"></i></span><span>${p.strength}</span></div>` : '';
@@ -77,6 +80,7 @@
       <div class="head"><div class="pv"></div>
         <div><div class="nm">${esc(p.name)}</div><div class="sub">${esc(p.title)}</div><div class="co">${esc(p.company.name)}</div></div></div>
       ${p.email ? `<div class="row"><span class="k">Email</span><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></div>` : ''}
+      ${bio(p)}
       <div class="row"><span class="k">Last seen</span><span>${esc(ctx.ago(p.lastInteraction))}</span></div>
       ${strength}
       ${p.linkedin ? `<div class="row"><span class="k">LinkedIn</span><a href="${esc(p.linkedin)}" target="_blank" rel="noopener">Profile ↗</a></div>` : ''}
@@ -86,8 +90,9 @@
   }
 
   // ---------- floor plans ----------
+  const MAX_DESKS = 48;
   function plan(company, th) {
-    const n = company.people.length;
+    const n = Math.min(MAX_DESKS, company.people.length);
     const seats = [], furn = [];
     let RW, RD;
     if (th.layout === 'boardroom' || th.layout === 'communal') {
@@ -114,7 +119,7 @@
 
   // ---------- room renderer ----------
   function drawRoom(company, selected) {
-    const th = THEMES[company.industry] || THEME_DEFAULT;
+    const th = THEMES[S.styleOf(company)] || THEME_DEFAULT;
     const { RW, RD, seats, furn } = plan(company, th);
     const cw = (RW + RD) * S.HW + 12, ch = (RW + RD) * S.HH + WALL + 30;
     const ox = RD * S.HW + 6, oy = WALL + 16;
@@ -327,7 +332,7 @@
   // ---------- office window ----------
   function open(company, ctx, selected = null) {
     const n = company.people.length;
-    const th = THEMES[company.industry] || THEME_DEFAULT;
+    const th = THEMES[S.styleOf(company)] || THEME_DEFAULT;
     const win = makeWindow('office', `<i style="background:${th.trim}"></i>${esc(company.name)}<em>${esc(th.name)} · ${n} ${n === 1 ? 'person' : 'people'} you know</em>`);
     const body = win.querySelector('.body');
     body.className = 'body office-body';
@@ -376,7 +381,7 @@
       company.domain && ['Domain', company.domain],
       ['Last touch', ctx.ago(company.lastInteraction)],
     ].filter(Boolean);
-    side.innerHTML = `<div class="facts">${facts.map(([k, v]) => `<div class="row"><span class="k">${k}</span><span>${esc(v)}</span></div>`).join('')}</div>
+    side.innerHTML = `<div class="facts">${bio(company)}${facts.map(([k, v]) => `<div class="row"><span class="k">${k}</span><span>${esc(v)}</span></div>`).join('')}</div>
       <div class="plist">${company.people.map((p, i) =>
         `<button data-i="${i}"><span class="dot" style="background:${S.looks(p).top}"></span><span class="pn">${esc(p.name)}<small>${esc(p.title)}</small></span><span class="ago">${esc(ctx.ago(p.lastInteraction))}</span></button>`).join('')}</div>
       <div class="hint">Click anyone at their desk · <span class="g">▮</span> talked this week</div>`;

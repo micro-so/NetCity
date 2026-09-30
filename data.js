@@ -119,7 +119,8 @@
   const label = (v) => (v && typeof v === 'object' ? v.name || v.label || v.value || '' : v || '');
   function sectorOf(p) {
     if (p.industry && SECTORS.some(([n]) => n === p.industry)) return p.industry;
-    const tags = [].concat(p.categories || [], p.industry || []).map(label).join(' ').toLowerCase();
+    let tags = [].concat(p.categories || [], p.industry || []).map(label).join(' ').toLowerCase();
+    if (!SECTORS.some(([, re]) => re.test(tags))) tags += ' ' + String(p.about || '').toLowerCase() + ' ' + String(p.summary || '').toLowerCase();
     if (!tags) return 'Other';
     const hit = SECTORS.find(([, re]) => re.test(tags));
     return hit ? hit[0] : 'Other';
@@ -132,6 +133,17 @@
     return p['company.id'] || p.company_id || null;
   }
 
+  // Micro stores relationship strength as a label; the card shows a 0-100 bar.
+  function strengthOf(v) {
+    v = label(first(v));
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return v;
+    const s = String(v).toLowerCase();
+    const n = parseFloat(s);
+    if (!isNaN(n)) return n <= 1 ? Math.round(n * 100) : Math.round(n);
+    return /hot/.test(s) ? 95 : /warm/.test(s) ? 75 : /average/.test(s) ? 50 : /cool/.test(s) ? 30 : /cold/.test(s) ? 12 : /very strong|strongest/.test(s) ? 95 : /strong/.test(s) ? 80 : /medium|moderate|good/.test(s) ? 55 : /very weak|cold/.test(s) ? 12 : /weak/.test(s) ? 30 : null;
+  }
+
   // Turn Micro-shaped responses into the game's model.
   function normalize(raw, now) {
     const companies = new Map();
@@ -141,17 +153,20 @@
         id: o.id,
         name: p.name || p.primary_domain || 'Unknown Co',
         domain: p.primary_domain || null,
-        industry: sectorOf(p),
+        industry: sectorOf(p) === 'Other' ? 'Downtown' : sectorOf(p),
         stage: label(first(p.stage)) || null,
         funding: p.funding_raised || null,
         employees: p.employee_count || null,
         logo: p.logo_url || p.logo || null,
+        summary: p.summary || null,
+        about: p.about || null,
         lastInteraction: p.last_interaction_date ? Date.parse(p.last_interaction_date) : 0,
         people: [],
       });
     }
     const people = [];
-    for (const c of raw.contacts.data) {
+    // people are identities (one per real person); demo data still uses contacts
+    for (const c of (raw.identities || raw.contacts).data) {
       const p = c.properties || {};
       const companyId = companyIdOf(p);
       const co = companies.get(companyId);
@@ -162,7 +177,9 @@
         title: p.title || '',
         email: p.email || null,
         linkedin: p.linkedin || null,
-        strength: p.relationship_strength ?? null,
+        summary: p.summary || null,
+        about: p.about || null,
+        strength: strengthOf(p.relationship_strength),
         lastInteraction: p.last_interaction_date ? Date.parse(p.last_interaction_date) : 0,
         company: co,
       };
@@ -181,6 +198,8 @@
     const now = Date.now();
     const real = new URLSearchParams(location.search).has('real');
     if (real) {
+      const el = document.getElementById('loading');
+      if (el) el.textContent = 'Pulling your network from Micro… the first load can take ~30s';
       let token = null;
       try { token = localStorage.getItem('netcity.token'); } catch { /* private mode */ }
       const res = await fetch('/api/city', { headers: token ? { 'x-netcity-token': token } : {} });

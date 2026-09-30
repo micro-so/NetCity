@@ -663,10 +663,14 @@
 
   let speed = 1, hover = null, last = performance.now();
   let N = 0;
-  function blit(sp, x, y) {
-    if (N < 1) ctx.drawImage(sp.day, x, y);
-    if (N > 0) { ctx.globalAlpha = Math.min(1, N); ctx.drawImage(sp.night, x, y); ctx.globalAlpha = 1; }
+  function blit(sp, x, y, a = 1) {
+    if (N < 1) { ctx.globalAlpha = a; ctx.drawImage(sp.day, x, y); }
+    if (N > 0) { ctx.globalAlpha = Math.min(1, N) * a; ctx.drawImage(sp.night, x, y); }
+    ctx.globalAlpha = 1;
   }
+  // x-ray: towers in front of what the cursor points at fade out
+  let xray = new Set(), xrayAll = false;
+  const fadeOf = (it, sp) => (xray.has(it) ? 0.22 : xrayAll && sp.h > 90 && hover !== it ? 0.4 : 1);
 
   // Movers sort by the road tile they're on, not their exact position: lane offsets
   // would otherwise push someone behind a building past that building's depth.
@@ -742,7 +746,7 @@
     for (const it of items) {
       if (it.civic) {
         const sp = it.sp, x = it.x - sp.ox - L, y = it.y - sp.oy - T;
-        blit(sp, x, y);
+        blit(sp, x, y, fadeOf(it, sp));
         if (hover === it) {
           ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.16;
           ctx.drawImage(N > 0.5 ? sp.night : sp.day, x, y);
@@ -751,7 +755,7 @@
       } else if (it.people) {
         const sp = it.sprite, x = it.wx - sp.ox - L, y = it.wy - sp.oy - T;
         if (x > vw || y > vh || x + sp.w < 0 || y + sp.h < 0) continue;
-        blit(sp, x, y);
+        blit(sp, x, y, fadeOf(it, sp));
         if (hover === it) {
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = 0.16;
@@ -836,10 +840,18 @@
     }
     if (best) return best;
     const sorted = [...buildings, ...civics].sort((a, b) => b.depth - a.depth);
+    const hits = [];
     for (const b of sorted) {
-      if (b.civic) { if (b.sp.hit(Math.floor(wx - (b.x - b.sp.ox)), Math.floor(wy - (b.y - b.sp.oy)))) return b; continue; }
-      if (b.sprite.hit(Math.floor(wx - (b.wx - b.sprite.ox)), Math.floor(wy - (b.wy - b.sprite.oy)))) return b;
+      const sp = b.civic ? b.sp : b.sprite, ox = b.civic ? b.x : b.wx, oy = b.civic ? b.y : b.wy;
+      if (sp.hit(Math.floor(wx - (ox - sp.ox)), Math.floor(wy - (oy - sp.oy)))) hits.push({ b, base: oy + HH * 4 });
+      if (hits.length > 3) break;
     }
+    // Pointing high up a tower that stands in front of something? Look through it.
+    const next = new Set();
+    let k = 0;
+    while (k < hits.length - 1 && hits[k].base - wy > 36) next.add(hits[k++].b);
+    xray = next;
+    if (hits[k]) return hits[k].b;
     return null;
   }
 
@@ -893,7 +905,7 @@
     else if (hit.people) window.Office.open(hit, octx);
     else window.Office.openPerson(hit.person, octx);
   });
-  canvas.addEventListener('pointerleave', () => { tip.style.display = 'none'; hover = null; });
+  canvas.addEventListener('pointerleave', () => { tip.style.display = 'none'; hover = null; xray = new Set(); });
 
   function setZoom(z, mx = innerWidth / 2, my = innerHeight / 2) {
     z = Math.max(1, Math.min(5, z));
@@ -913,6 +925,10 @@
 
   document.getElementById('zoomIn').onclick = () => setZoom(zoom + 1);
   document.getElementById('zoomOut').onclick = () => setZoom(zoom - 1);
+  const xrayBtn = document.getElementById('xray');
+  const setXray = (on) => { xrayAll = on; xrayBtn.classList.toggle('on', on); };
+  xrayBtn.onclick = () => setXray(!xrayAll);
+  addEventListener('keydown', (e) => { if ((e.key === 'x' || e.key === 'X') && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) setXray(!xrayAll); });
   document.getElementById('recenter').onclick = () => { cam.x = center[0]; cam.y = center[1] - 60; };
   let labelsOn = true;
   document.getElementById('toggleLabels').onclick = (e) => {
@@ -939,7 +955,7 @@
 
   const tickerSpan = document.querySelector('#ticker span');
   tickerSpan.textContent = walkerPeople.slice(0, 25)
-    .map((p) => `${p.name} · ${p.title}, ${p.company.name} · ${ago(p.lastInteraction)}`).join('   ◆   ');
+    .map((p) => `${p.name} · ${[p.title, p.company.name].filter(Boolean).join(', ')} · ${ago(p.lastInteraction)}`).join('   ◆   ');
   let tickX = 400;
   (function tick() {
     tickX -= 0.6;

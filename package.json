@@ -1,0 +1,14 @@
+{
+  "name": "netcity",
+  "private": true,
+  "description": "Your network, zoned. A SimCity 2000-style pixel city on Micro Blocks.",
+  "scripts": {
+    "dev": "node dev.js"
+  },
+  "dependencies": {
+    "@micro-so/sdk": "0.14.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

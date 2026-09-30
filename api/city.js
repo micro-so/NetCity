@@ -1,48 +1,75 @@
-// Read-only proxy to Micro Blocks. Returns { organizations, contacts } shaped like
-// Prism query responses so the browser's normalizer can build the city.
-// The API key never leaves the server.
+// Read-only city data from Micro Blocks, via the official SDK.
 //
-// Env: MICRO_API_KEY, MICRO_TEAM_ID, optional MICRO_BASE_URL, optional NETCITY_ACCESS_TOKEN.
-// Without NETCITY_ACCESS_TOKEN the endpoint only answers requests to localhost, so a
-// public deployment can't leak your network by accident.
+// Buildings are organizations you've touched in the last 30 days. People are
+// identities (one per real person, not one per email/contact record), placed at
+// the company of their most recent contact. The API key never leaves the server.
+//
+// Env: MICRO_API_KEY, MICRO_TEAM_ID, optional MICRO_BASE_URL, NETCITY_ACCESS_TOKEN,
+// NETCITY_MAX_COMPANIES. Without NETCITY_ACCESS_TOKEN it only answers on localhost.
+const MicroSDK = require('@micro-so/sdk');
+const Micro = MicroSDK.default || MicroSDK.Micro || MicroSDK;
 
-const BASE = process.env.MICRO_BASE_URL || 'https://developers.micro.so';
 const DAY = 864e5;
-const MAX_PAGES = 60; // 50 per page -> up to 3,000 records per object type
-
-async function query(objectType, body) {
-  const res = await fetch(`${BASE}/v2/prism/${process.env.MICRO_TEAM_ID}/${objectType}/query`, {
-    method: 'POST',
-    headers: { 'x-api-key': process.env.MICRO_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 429) {
-    const wait = Number(res.headers.get('retry-after') || 1) * 1000;
-    await new Promise((r) => setTimeout(r, wait));
-    return query(objectType, body);
+const MAX_PAGES = 60; // 50 per page
+const MAX_COMPANIES = Number(process.env.NETCITY_MAX_COMPANIES) || 300;
+const CONCURRENCY = 8; // Micro's beta limit is 10 req/s; each page takes ~1s
+const CACHE_MS = 10 * 60 * 1000;
+const fs = require('fs');
+const path = require('path');
+const CACHE_FILE = path.join(require('os').tmpdir(), `netcity-${String(process.env.MICRO_TEAM_ID || 'x').slice(0, 8)}.json`);
+// Personal email providers show up as "companies"; nobody works there.
+const PERSONAL = /^(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|mac|aol|proton|protonmail|pm|hey|fastmail|gmx|zoho|yandex|qq|163)\./i;
+// Stale-while-revalidate: always answer from the last build if there is one,
+// and rebuild in the background once it's older than CACHE_MS.
+let cache = null;
+try { cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); } catch { /* first run */ }
+let building = null;
+function rebuild() {
+  if (!building) {
+    const t = Date.now();
+    building = buildCity()
+      .then((city) => {
+        cache = { at: Date.now(), body: JSON.stringify(city) };
+        try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cache)); } catch { /* read-only fs */ }
+        console.log(`[netcity] city built in ${Math.round((Date.now() - t) / 1000)}s`);
+      })
+      .finally(() => { building = null; });
   }
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(`${objectType} query failed (${res.status}): ${JSON.stringify(json).slice(0, 300)}`);
-    err.status = res.status;
-    throw err;
-  }
-  return json;
+  return building;
 }
+
+function client() {
+  return new Micro({
+    apiKey: process.env.MICRO_API_KEY,
+    teamID: process.env.MICRO_TEAM_ID,
+    ...(process.env.MICRO_BASE_URL ? { baseURL: process.env.MICRO_BASE_URL } : {}),
+  });
+}
+
+async function pool(items, n, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k]); }
+  }));
+  return out;
+}
+const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
 
 // Page through a query. Tries each select list in turn so an unknown slug
 // (a 400) degrades to a smaller field set instead of failing the whole city.
-async function queryAll(objectType, selects, filter, sort) {
+async function queryAll(resource, selects, filter, sort) {
   let lastErr;
   for (const select of selects) {
     try {
       const out = [];
-      let cursor = null;
+      let cursor;
       for (let page = 0; page < MAX_PAGES; page++) {
-        const json = await query(objectType, { query: { select, filter, sort, limit: 50, cursor } });
-        out.push(...(json.data || []));
-        if (!json.has_more || !json.next_cursor) break;
-        cursor = json.next_cursor;
+        const q = { select, filter, limit: 50, ...(sort ? { sort } : {}), ...(cursor ? { cursor } : {}) };
+        const res = await resource.query({ query: q });
+        out.push(...(res.data || []));
+        if (!res.has_more || !res.next_cursor) break;
+        cursor = res.next_cursor;
       }
       return out;
     } catch (e) {
@@ -56,11 +83,76 @@ async function queryAll(objectType, selects, filter, sort) {
 function allowed(req) {
   const token = process.env.NETCITY_ACCESS_TOKEN;
   if (token) return req.headers['x-netcity-token'] === token;
-  const host = String(req.headers.host || '');
-  return /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+  return /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(String(req.headers.host || ''));
+}
+const firstId = (v) => { const f = Array.isArray(v) ? v[0] : v; return f && typeof f === 'object' ? f.id : f || null; };
+const ids = (v) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => (x && typeof x === 'object' ? x.id : x)).filter(Boolean);
+const clip = (s, n) => (s ? String(s).slice(0, n) : s);
+
+async function buildCity() {
+  const micro = client();
+  const O = micro.prism.objects;
+  const since = new Date(Date.now() - 30 * DAY).toISOString().slice(0, 10);
+
+  // 1. Companies you've touched in the last 30 days become buildings.
+  const organizations = (await queryAll(
+    O.organizations,
+    [
+      ['name', 'primary_domain', 'categories', 'about', 'summary', 'stage', 'funding_raised', 'employee_count', 'logo_url', 'last_interaction_date'],
+      ['name', 'primary_domain', 'categories', 'stage', 'logo_url', 'last_interaction_date'],
+    ],
+    [{ last_interaction_date: { '>=': since } }],
+    [{ last_interaction_date: 'desc' }],
+  ))
+    .filter((o) => !PERSONAL.test(o.properties.primary_domain || '') && !PERSONAL.test((o.properties.name || '') + '.'))
+    .slice(0, MAX_COMPANIES);
+  for (const o of organizations) { o.properties.about = clip(o.properties.about, 500); o.properties.summary = clip(o.properties.summary, 500); }
+
+  // 2. Contact records at those companies (only to link people to companies).
+  const contacts = (await pool(chunk(organizations.map((o) => o.id), 50), CONCURRENCY, (orgChunk) =>
+    queryAll(O.contacts, [['company', 'title', 'email', 'last_interaction_date']], [{ company: { in: orgChunk } }]))).flat();
+  const contactById = new Map(contacts.map((c) => [c.id, c.properties]));
+
+  // 3. The identities behind those contacts: one per real person.
+  const identitySelects = [
+    ['full_name', 'title', 'about', 'summary', 'relationship_strength', 'last_interaction_date', 'email_addresses', 'linkedin', 'photo_url'],
+    ['full_name', 'title', 'relationship_strength', 'last_interaction_date', 'email_addresses'],
+  ];
+  const identities = (await pool(chunk([...contactById.keys()], 500), CONCURRENCY, (cChunk) =>
+    queryAll(O.identities, identitySelects, [{ email_addresses: { in: cChunk } }]))).flat();
+
+  // Place each person once, at the company of their most recent contact record.
+  const seen = new Set();
+  const people = [];
+  for (const idn of identities) {
+    if (seen.has(idn.id)) continue;
+    seen.add(idn.id);
+    const p = idn.properties;
+    const mine = ids(p.email_addresses).map((cid) => contactById.get(cid)).filter(Boolean);
+    if (!mine.length) continue;
+    mine.sort((a, b) => String(b.last_interaction_date || '').localeCompare(String(a.last_interaction_date || '')));
+    const best = mine[0];
+    const last = [p.last_interaction_date, ...mine.map((c) => c.last_interaction_date)].filter(Boolean).sort().pop() || null;
+    people.push({
+      id: idn.id,
+      properties: {
+        full_name: p.full_name,
+        title: p.title || (mine.find((c) => c.title) || {}).title || null,
+        email: best.email || null,
+        about: clip(p.about, 500),
+        summary: clip(p.summary, 500),
+        relationship_strength: p.relationship_strength ?? null,
+        last_interaction_date: last,
+        linkedin: p.linkedin || null,
+        photo_url: p.photo_url || null,
+        company: firstId(best.company),
+      },
+    });
+  }
+  return { organizations: { data: organizations }, identities: { data: people } };
 }
 
-module.exports = async (req, res) => {
+module.exports = async function city(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   if (!allowed(req)) {
     res.statusCode = 401;
@@ -70,41 +162,16 @@ module.exports = async (req, res) => {
     res.statusCode = 500;
     return res.end(JSON.stringify({ error: 'MICRO_API_KEY and MICRO_TEAM_ID are not set on the server.' }));
   }
+  const fresh = new URL(req.url || '/', 'http://x').searchParams.has('fresh');
   try {
-    const since = new Date(Date.now() - 30 * DAY).toISOString().slice(0, 10);
-    // Companies you've touched in the last 30 days become buildings.
-    const organizations = await queryAll(
-      'organization',
-      [
-        ['name', 'primary_domain', 'categories', 'stage', 'funding_raised', 'employee_count', 'logo_url', 'last_interaction_date'],
-        ['name', 'primary_domain', 'categories', 'last_interaction_date'],
-      ],
-      [{ last_interaction_date: { '>=': since } }],
-      [{ last_interaction_date: 'desc' }],
-    );
-    const orgIds = organizations.map((o) => o.id);
-
-    // Everyone you know at those companies (building height = head count).
-    const contactSelects = [
-      ['full_name', 'email', 'title', 'linkedin', 'photo_url', 'last_interaction_date', 'company', 'company.name'],
-      ['full_name', 'email', 'title', 'last_interaction_date', 'company'],
-    ];
-    let contacts = [];
-    for (let i = 0; i < orgIds.length; i += 50) {
-      const chunk = orgIds.slice(i, i + 50);
-      try {
-        contacts.push(...(await queryAll('contact', contactSelects, [{ company: { in: chunk } }], [{ last_interaction_date: 'desc' }])));
-      } catch (e) {
-        if (e.status !== 400) throw e;
-        // Relation filters unsupported: fall back to recent contacts and filter here.
-        contacts = await queryAll('contact', contactSelects, [{ last_interaction_date: { exists: true } }], [{ last_interaction_date: 'desc' }]);
-        break;
-      }
-    }
+    if (!cache || fresh) await rebuild();
+    else if (Date.now() - cache.at > CACHE_MS) rebuild().catch((e) => console.error('[netcity] rebuild failed', e.message));
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ organizations: { data: organizations }, contacts: { data: contacts } }));
+    res.end(cache.body);
   } catch (e) {
-    res.statusCode = e.status && e.status < 500 ? 502 : 500;
-    res.end(JSON.stringify({ error: e.message }));
+    res.statusCode = 502;
+    res.end(JSON.stringify({ error: String(e.message || e).slice(0, 400) }));
   }
 };
+
+module.exports.warm = () => (cache ? Promise.resolve() : rebuild());

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetCity 2000</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f1e6; --paper-2: #ebe3d2; --ink: #1d1b16; --ink-2: #5b5548; --accent: #e0643a; --green: #35c46a;
+    --pixel: 'Silkscreen', ui-monospace, monospace; --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; color: var(--ink); font: 13px/1.45 var(--mono); background: #e9e2d2; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* sky: three layers cross-faded by time of day */
+  .sky { position: fixed; inset: 0; transition: opacity 1.2s ease; opacity: 0; }
+  .sky.day { background: radial-gradient(120% 90% at 50% 20%, #f7f1e3 0%, #e4e8e0 55%, #cfdcdc 100%); }
+  .sky.dusk { background: linear-gradient(180deg, #f4c7a0 0%, #d99a9a 38%, #7f7aa8 72%, #4d5685 100%); }
+  .sky.night { background: radial-gradient(120% 90% at 50% 10%, #26305a 0%, #141a33 55%, #0a0d1c 100%); }
+  body[data-tod="day"] .sky.day, body[data-tod="dusk"] .sky.dusk, body[data-tod="night"] .sky.night { opacity: 1; }
+  .stars { position: fixed; inset: 0; opacity: 0; transition: opacity 1.2s; background-image:
+    radial-gradient(1px 1px at 12% 18%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 72% 9%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 38% 6%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 88% 27%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 58% 22%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 22% 36%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 93% 12%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 5% 8%, #fff 50%, transparent 51%); }
+  body[data-tod="night"] .stars { opacity: .7; }
+
+  #city { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; cursor: grab; touch-action: none; }
+  #city.dragging { cursor: grabbing; }
+  #city.pointing { cursor: pointer; }
+  .vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(20,18,30,.28) 100%); z-index: 1; }
+
+  .panel { background: var(--paper); border: 1.5px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+  .btn { background: var(--paper); border: 1.5px solid var(--ink); padding: 0 10px; height: 28px; min-width: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+  .btn:hover { background: var(--paper-2); }
+  .btn.on { background: var(--ink); color: var(--paper); }
+  .seg { display: inline-flex; }
+  .seg .btn + .btn { border-left: 0; }
+  .lbl { font: 9px var(--pixel); letter-spacing: .06em; color: var(--ink-2); text-transform: uppercase; margin-right: 6px; }
+
+  #brand { position: fixed; top: 14px; left: 14px; z-index: 5; padding: 10px 14px 10px 12px; display: flex; gap: 12px; align-items: center; }
+  .mark { width: 30px; height: 30px; flex: none; image-rendering: pixelated; }
+  .brand-t { font: 15px var(--pixel); letter-spacing: .02em; line-height: 1; }
+  .brand-s { color: var(--ink-2); font-size: 11.5px; margin-top: 4px; }
+  #stats { display: flex; gap: 14px; margin-top: 7px; font-size: 11.5px; color: var(--ink-2); }
+  #stats b { color: var(--ink); font-weight: 600; }
+  #modeChip { font: 9px var(--pixel); background: #f2c14e; border: 1.5px solid var(--ink); padding: 1px 5px; margin-left: 8px; vertical-align: 2px; }
+
+  #controls { position: fixed; top: 14px; right: 14px; z-index: 5; padding: 8px 10px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 28px); }
+  #controls .grp { display: flex; align-items: center; }
+  #date { font-size: 11.5px; color: var(--ink-2); }
+
+  #tickerbar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 5; width: min(760px, calc(100vw - 28px)); display: flex; align-items: center; height: 34px; overflow: hidden; }
+  #tickerbar .live { font: 9px var(--pixel); background: var(--ink); color: var(--paper); height: 100%; display: flex; align-items: center; padding: 0 10px; gap: 6px; flex: none; }
+  #tickerbar .live i { width: 6px; height: 6px; background: var(--green); display: inline-block; animation: blink 1.4s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  #ticker { flex: 1; position: relative; height: 100%; overflow: hidden; }
+  #ticker span { position: absolute; white-space: nowrap; line-height: 31px; left: 0; will-change: transform; font-size: 12px; }
+
+  #labels { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+  .dlabel { position: absolute; transform: translate(-50%, -100%); font: 9px var(--pixel); letter-spacing: .05em; text-transform: uppercase;
+    background: var(--paper); color: var(--ink); padding: 3px 7px 3px 5px; border: 1.5px solid var(--ink); box-shadow: 2px 2px 0 var(--ink);
+    white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+  .dlabel i { width: 8px; height: 8px; border: 1px solid var(--ink); display: inline-block; }
+  .dlabel b { font-weight: normal; color: var(--ink-2); }
+  #labels.hidden { display: none; }
+
+  #tip { position: fixed; z-index: 30; pointer-events: none; background: var(--ink); color: var(--paper); padding: 5px 9px; display: none; white-space: nowrap; font-size: 12px; line-height: 1.35; }
+  #tip b { display: block; font-weight: 600; }
+  #tip span { color: #c9c1ae; font-size: 11px; }
+
+  .win { position: fixed; z-index: 10; display: flex; flex-direction: column; background: var(--paper); border: 1.5px solid var(--ink); box-shadow: 5px 5px 0 var(--ink);
+    max-width: calc(100vw - 20px); max-height: calc(100vh - 40px); animation: pop .18s ease-out; }
+  @keyframes pop { from { transform: translate(var(--tx, 0), var(--ty, 0)) scale(.97); opacity: 0; } }
+  .win .titlebar { background: var(--ink); color: var(--paper); display: flex; align-items: center; justify-content: space-between; padding: 7px 8px 7px 12px; gap: 10px; cursor: move; user-select: none; }
+  .win .titlebar .t { display: flex; align-items: baseline; gap: 8px; font: 11px var(--pixel); letter-spacing: .03em; min-width: 0; }
+  .win .titlebar .t i { width: 8px; height: 8px; display: inline-block; flex: none; align-self: center; }
+  .win .titlebar .t em { font: 11px var(--mono); font-style: normal; color: #b9b1a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .win .titlebar .x { background: none; border: 0; color: var(--paper); width: 22px; height: 22px; padding: 0; font-size: 13px; }
+  .win .titlebar .x:hover { background: #3a372f; }
+  .win .body { overflow: auto; }
+
+  #office { left: 50%; top: 50%; --tx: -50%; --ty: -50%; transform: translate(-50%, -50%); width: min(1080px, calc(100vw - 20px)); }
+  .office-body { display: flex; min-height: 0; }
+  .office-body .view { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; min-height: 400px; padding: 8px; border-right: 1.5px solid var(--ink); }
+  .office-body canvas { image-rendering: pixelated; display: block; }
+  .office-body .side { width: 300px; flex: none; display: flex; flex-direction: column; min-height: 0; max-height: calc(100vh - 110px); }
+  .facts { padding: 12px 14px; border-bottom: 1.5px solid var(--ink); }
+  .row { display: flex; gap: 10px; align-items: center; min-height: 22px; }
+  .row .k { width: 92px; flex: none; color: var(--ink-2); font-size: 11.5px; }
+  .row a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+  .plist { overflow: auto; flex: 1; min-height: 120px; }
+  .plist button { display: flex; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--paper-2); padding: 6px 14px; gap: 10px; align-items: center; }
+  .plist button:hover { background: var(--paper-2); }
+  .plist .pn { display: flex; flex-direction: column; min-width: 0; }
+  .plist .pn small { color: var(--ink-2); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .plist .ago { margin-left: auto; color: var(--ink-2); font-size: 11px; white-space: nowrap; }
+  .dot { width: 10px; height: 10px; flex: none; border: 1.5px solid var(--ink); }
+  .hint { color: var(--ink-2); font-size: 11px; padding: 8px 14px; border-top: 1.5px solid var(--ink); }
+  .hint .g { color: var(--green); }
+
+  .card { padding: 14px; }
+  .card .head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+  .card .portrait { image-rendering: pixelated; border: 1.5px solid var(--ink); display: block; }
+  .card .nm { font: 13px var(--pixel); line-height: 1.2; }
+  .card .sub { color: var(--ink); margin-top: 3px; }
+  .card .co { color: var(--ink-2); font-size: 11.5px; }
+  .meter { flex: 1; height: 8px; border: 1.5px solid var(--ink); background: var(--paper-2); max-width: 130px; }
+  .meter i { display: block; height: 100%; background: var(--green); }
+  .card .back { margin-top: 12px; width: 100%; }
+
+  #person { width: 340px; }
+  .dlabel.civic { background: var(--ink); color: var(--paper); }
+  .dlabel.civic i { background: #6fa894; border-color: var(--paper); }
+  #hall { left: 50%; top: 50%; --tx: -50%; --ty: -50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 20px)); }
+  .hall-body section { padding: 14px 16px; border-bottom: 1.5px solid var(--paper-2); }
+  .hall-body section:last-child { border-bottom: 0; }
+  .hall-body h4 { margin: 0 0 8px; font: 10px var(--pixel); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+  .hall-body .row { margin: 4px 0; }
+  .hall-body .row .k { width: 96px; }
+  .hall-body .seg .btn { height: 26px; font-size: 12px; }
+  .mayor { display: flex; gap: 16px; align-items: flex-start; }
+  .plinth { width: 132px; height: 144px; flex: none; display: grid; place-items: center; border: 1.5px solid var(--ink);
+    background: radial-gradient(ellipse at 50% 35%, #fbf6ea, #d9ceb6); }
+  .plinth .bust { width: 120px; height: 130px; image-rendering: pixelated; }
+  .mayor-f { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .mayor-f input:not([type]) , #mayorName { font: 14px var(--mono); padding: 6px 8px; border: 1.5px solid var(--ink); background: #fffdf8; color: var(--ink); width: 100%; }
+  .mayor-f .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .hall-body .hint { margin: 0; color: var(--ink-2); font-size: 11.5px; }
+  .hall-body code { font-size: 11px; background: var(--paper-2); padding: 0 3px; }
+  .hall-body .err { margin: 0; color: #b23a48; font-size: 12px; }
+
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; font: 12px var(--pixel); z-index: 40; background: #efe8d8; transition: opacity .6s; }
+  #loading.done { opacity: 0; pointer-events: none; }
+
+  @media (max-width: 1180px) {
+    #controls { top: auto; bottom: 60px; }
+  }
+  @media (max-width: 760px) {
+    #brand { top: 8px; left: 8px; right: 8px; padding: 8px 10px; }
+    .brand-s { display: none; }
+    #controls { top: auto; bottom: 56px; right: 8px; left: 8px; justify-content: center; gap: 8px; padding: 6px; }
+    #controls .lbl, #date, .hide-sm { display: none; }
+    #tickerbar { bottom: 8px; width: calc(100vw - 16px); }
+    .office-body { flex-direction: column; }
+    .office-body .view { border-right: 0; border-bottom: 1.5px solid var(--ink); min-height: 240px; }
+    .office-body .side { width: auto; max-height: 40vh; }
+    #person { width: calc(100vw - 20px); left: 10px !important; }
+  }
+</style>
+</head>
+<body data-tod="dusk">
+<div class="sky day"></div><div class="sky dusk"></div><div class="sky night"></div><div class="stars"></div>
+<canvas id="city"></canvas>
+<div class="vignette"></div>
+<div id="labels"></div>
+<div id="tip"></div>
+
+<div id="brand" class="panel">
+  <canvas class="mark" id="mark" width="15" height="15"></canvas>
+  <div>
+    <div class="brand-t">NetCity 2000<span id="modeChip">DEMO</span></div>
+    <div class="brand-s">Your network, zoned.</div>
+    <div id="stats"></div>
+  </div>
+</div>
+
+<div id="controls" class="panel">
+  <div class="grp"><span class="lbl">Light</span><div class="seg">
+    <button class="btn" data-tod="day" title="Day">☀</button>
+    <button class="btn on" data-tod="dusk" title="Golden hour">◐</button>
+    <button class="btn" data-tod="night" title="Night">☾</button>
+    <button class="btn" data-tod="cycle" title="Cycle day and night">⟳</button>
+  </div></div>
+  <div class="grp"><span class="lbl">Speed</span><div class="seg">
+    <button class="btn" data-speed="0" title="Pause">❚❚</button>
+    <button class="btn on" data-speed="1" title="Normal">▶</button>
+    <button class="btn" data-speed="3" title="Fast">▶▶</button>
+  </div></div>
+  <div class="grp"><div class="seg">
+    <button class="btn" id="zoomOut" title="Zoom out">−</button>
+    <button class="btn" id="zoomIn" title="Zoom in">+</button>
+  </div></div>
+  <div class="grp hide-sm"><div class="seg">
+    <button class="btn" id="recenter" title="Recenter">Center</button>
+    <button class="btn on" id="toggleLabels" title="District labels">Labels</button>
+  </div></div>
+  <span id="date"></span>
+</div>
+
+<div id="tickerbar" class="panel"><div class="live"><i></i>Recent</div><div id="ticker"><span></span></div></div>
+
+<div id="loading">Zoning the city…</div>
+
+<script>
+  // pixel logo: three towers
+  (function () {
+    const g = document.getElementById('mark').getContext('2d');
+    const px = (c, x, y, w, h) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+    px('#e0643a', 1, 7, 4, 8); px('#1d1b16', 5, 2, 5, 13); px('#2c5f8a', 10, 5, 4, 10);
+    for (let y = 4; y < 14; y += 2) { px('#f2c14e', 6, y, 1, 1); px('#f2c14e', 8, y, 1, 1); }
+    px('#1d1b16', 7, 0, 1, 2);
+  })();
+</script>
+<script src="data.js"></script>
+<script src="sprites.js"></script>
+<script src="office.js"></script>
+<script src="civic.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

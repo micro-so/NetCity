@@ -1,0 +1,53 @@
+# NetCity 2000
+
+**Your network, zoned.** A SimCity 2000–style isometric city built from your relationship graph on [Micro Blocks](https://micro.so/blocks).
+
+- **Companies are buildings.** Floors = the number of people you know there. Only companies you've touched in the last 30 days get a building.
+- **Districts are industries**, each with its own architecture: limestone VC banks with gold crowns, dark-glass AI towers with violet LED bands, brick dev-tools lofts with water tanks, timber climate terraces, neon crypto ziggurats, and so on.
+- **People are sims.** The 100 people you talked to most recently walk the streets, dressed for their role (VCs in fleece vests, founders in hoodies, designers in black turtlenecks, sales in suits).
+- **Click a building** to walk into its office: a floor plan per industry (VC boardroom, AI lab with server racks, brick loft with ping-pong, cubicle farm, broadcast studio…) with everyone you know at their desk. Click a person for their card.
+- **City Hall** sits in the middle: settings, map choice, and a bronze statue of the mayor made from your photo (processed in the browser; only a 16×20 grid is saved, locally).
+- **Three maps:** Default (a waterfront island), **San Francisco** (Golden Gate, Bay Bridge, Alcatraz, Sutro Tower, fog, Waymos) and **New York** (Central Park, Brooklyn Bridge, Liberty, Empire State, One WTC, yellow cabs).
+- Day / golden hour / night (windows light up), whales in the bay, company logos on roofs, signs and facades.
+
+Everything is drawn in code as pixel art — no image assets, no build step.
+
+## Run it
+
+```bash
+python3 -m http.server 8761
+```
+
+Open http://localhost:8761. Add `?map=sf` or `?map=nyc` to jump to a map.
+
+It starts in **demo mode** with a made-up network. Every name, company and email in the demo is fictional.
+
+## Connect your real network (Micro Blocks)
+
+1. Get an API key and Team ID in Micro: **Settings → API** ([sign up](https://app.micro.so/login?intent=blocks)).
+2. Deploy to Vercel (or run `vercel dev`) with these environment variables:
+
+   ```bash
+   MICRO_API_KEY=...
+   MICRO_TEAM_ID=...
+   ```
+
+3. Open the city with `?real`. The browser calls `/api/city`, a small serverless function that reads your organizations and contacts from Micro. The key stays on the server.
+
+The function is **read-only** — it never writes to Micro.
+
+## Files
+
+| File | What it does |
+|---|---|
+| `index.html` | Page shell, UI panels, styles |
+| `data.js` | Demo data (shaped like Micro Prism responses) and the normalizer |
+| `sprites.js` | Pixel-art factory: buildings by industry, logos, people, cars, trees, bridges, landmarks, day/night |
+| `game.js` | Map layout, terrain, rendering, street life, whales, input |
+| `office.js` | Office interiors and person cards |
+| `civic.js` | City Hall settings and the photo → bronze statue |
+| `api/city.js` | Serverless proxy to the Micro Blocks API |
+
+## License
+
+MIT. City and landmark likenesses are affectionate pixel homages; company logos in demo mode are generated.

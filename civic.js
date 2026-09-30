@@ -91,7 +91,9 @@
         <div class="row"><span class="k">Source</span><span>${api.stats.demo ? 'Demo city (made-up data)' : 'Micro Blocks'}</span></div>
         <div class="row"><span class="k">Companies</span><span>${api.stats.companies} with a touch in the last 30 days</span></div>
         <div class="row"><span class="k">People</span><span>${api.stats.people} you know there</span></div>
-        ${api.stats.demo ? '<p class="hint">To build the city from your real network, add <code>MICRO_API_KEY</code> and <code>MICRO_TEAM_ID</code> to the server and open the city with <code>?real</code>.</p>' : ''}
+        <div class="row"><span class="k">Data</span>${seg('source', [['demo', 'Demo'], ['micro', 'My Micro network']], api.stats.demo ? 'demo' : 'micro')}</div>
+        <div class="row"><span class="k">Access token</span><input id="netToken" type="password" autocomplete="off" placeholder="Only needed when deployed" value="${esc(store.get('netcity.token') || '')}"></div>
+        <p class="hint">Your Micro data is read on the server with <code>MICRO_API_KEY</code> and <code>MICRO_TEAM_ID</code> (read-only). Deployed copies also need <code>NETCITY_ACCESS_TOKEN</code>; enter the same value here.</p>
       </section>`;
 
     const plinth = body.querySelector('.plinth');
@@ -99,6 +101,7 @@
     showBust();
     const err = body.querySelector('.err');
 
+    body.querySelector('#netToken').addEventListener('change', (e) => store.set('netcity.token', e.target.value.trim() || null));
     body.querySelector('#mayorName').addEventListener('input', (e) => store.set(KEY_NAME, e.target.value.trim() || null));
     body.querySelector('input[type=file]').addEventListener('change', async (e) => {
       const file = e.target.files[0];
@@ -124,6 +127,12 @@
             case 'speed': document.querySelector(`[data-speed="${v}"]`).click(); break;
             case 'labels': { const t = document.getElementById('toggleLabels'); if (t.classList.contains('on') !== (v === '1')) t.click(); break; }
             case 'whales': api.setWhales(v === '1'); break;
+            case 'source': {
+              const u = new URL(location.href);
+              if (v === 'micro') u.searchParams.set('real', ''); else u.searchParams.delete('real');
+              location.href = u.toString().replace('real=', 'real');
+              break;
+            }
             case 'map': {
               store.set('netcity.map', v);
               const u = new URL(location.href); u.searchParams.delete('map');

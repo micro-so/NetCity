@@ -102,6 +102,36 @@
     return { organizations: { data: orgs }, contacts: { data: contacts } };
   }
 
+  // Micro `categories` are free-form sector tags; map them onto the city's districts.
+  const SECTORS = [
+    ['Venture Capital', /venture|\bvc\b|investor|investment|capital|private equity|fund|angel/],
+    ['AI / ML', /\bai\b|artificial|machine learning|\bml\b|llm|generative|computer vision|robotic/],
+    ['Crypto', /crypto|web3|blockchain|defi|\bnft|bitcoin|ethereum/],
+    ['Fintech', /fintech|financ|payment|bank|insur|lending|accounting|trading|wealth/],
+    ['Healthcare', /health|medic|bio|pharma|clinic|care|therap|wellness/],
+    ['Climate', /climate|energy|clean|sustainab|solar|carbon|battery|ev\b|agri/],
+    ['Developer Tools', /developer|devtools|infrastructure|open source|cloud|\bapi|database|security|devops/],
+    ['Media', /media|content|news|entertainment|music|publishing|podcast|video|creator|film/],
+    ['Consumer', /consumer|retail|e-?commerce|food|fashion|gaming|travel|social|marketplace|beauty/],
+    ['Enterprise SaaS', /saas|enterprise|b2b|software|\bhr\b|sales|marketing|productivity|analytics|legal/],
+  ];
+  const first = (v) => (Array.isArray(v) ? v[0] : v);
+  const label = (v) => (v && typeof v === 'object' ? v.name || v.label || v.value || '' : v || '');
+  function sectorOf(p) {
+    if (p.industry && SECTORS.some(([n]) => n === p.industry)) return p.industry;
+    const tags = [].concat(p.categories || [], p.industry || []).map(label).join(' ').toLowerCase();
+    if (!tags) return 'Other';
+    const hit = SECTORS.find(([, re]) => re.test(tags));
+    return hit ? hit[0] : 'Other';
+  }
+  // The company link may come back as an id, an object, a list, or a flattened slug.
+  function companyIdOf(p) {
+    const c = first(p.company);
+    if (c && typeof c === 'object') return c.id || null;
+    if (typeof c === 'string') return c;
+    return p['company.id'] || p.company_id || null;
+  }
+
   // Turn Micro-shaped responses into the game's model.
   function normalize(raw, now) {
     const companies = new Map();
@@ -111,8 +141,8 @@
         id: o.id,
         name: p.name || p.primary_domain || 'Unknown Co',
         domain: p.primary_domain || null,
-        industry: p.industry || 'Other',
-        stage: p.stage || null,
+        industry: sectorOf(p),
+        stage: label(first(p.stage)) || null,
         funding: p.funding_raised || null,
         employees: p.employee_count || null,
         logo: p.logo_url || p.logo || null,
@@ -123,7 +153,7 @@
     const people = [];
     for (const c of raw.contacts.data) {
       const p = c.properties || {};
-      const companyId = (p.company && p.company.id) || p['company.id'] || (typeof p.company === 'string' ? p.company : null);
+      const companyId = companyIdOf(p);
       const co = companies.get(companyId);
       if (!co) continue;
       const person = {
@@ -151,9 +181,17 @@
     const now = Date.now();
     const real = new URLSearchParams(location.search).has('real');
     if (real) {
-      const res = await fetch('/api/city');
-      if (!res.ok) throw new Error('Could not load Micro data (' + res.status + ')');
-      return { ...normalize(await res.json(), now), now, demo: false };
+      let token = null;
+      try { token = localStorage.getItem('netcity.token'); } catch { /* private mode */ }
+      const res = await fetch('/api/city', { headers: token ? { 'x-netcity-token': token } : {} });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error('Could not load Micro data (' + res.status + '). ' + (body.error || ''));
+      }
+      const city = normalize(await res.json(), now);
+      // route logos through the same-origin proxy so they can be painted into sprites
+      for (const b of city.buildings) if (b.logo) b.logo = '/api/logo?u=' + encodeURIComponent(b.logo) + (token ? '&t=' + encodeURIComponent(token) : '');
+      return { ...city, now, demo: false };
     }
     return { ...normalize(mockRaw(now), now), now, demo: true };
   }

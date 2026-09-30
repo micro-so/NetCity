@@ -32,7 +32,9 @@ It starts in **demo mode** with a made-up network. Every name, company and email
    MICRO_TEAM_ID=...
    ```
 
-3. Open the city with `?real`. The browser calls `/api/city`, a small serverless function that reads your organizations and contacts from Micro. The key stays on the server.
+   On any host other than localhost, also set `NETCITY_ACCESS_TOKEN` and enter the same value in **City Hall → Access token** — otherwise the API refuses to serve your network.
+
+3. Open the city with `?real` (or pick **My Micro network** in City Hall). The browser calls `/api/city`, a small serverless function that reads your organizations and contacts from Micro. The key stays on the server.
 
 The function is **read-only** — it never writes to Micro.
 
@@ -47,6 +49,7 @@ The function is **read-only** — it never writes to Micro.
 | `office.js` | Office interiors and person cards |
 | `civic.js` | City Hall settings and the photo → bronze statue |
 | `api/city.js` | Serverless proxy to the Micro Blocks API |
+| `api/logo.js` | Same-origin logo proxy so real logos can be painted onto roofs |
 
 ## License
 

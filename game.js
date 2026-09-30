@@ -864,6 +864,7 @@
     return Math.round(d / 30) + ' months ago';
   };
   const octx = { ago, now };
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   // ---------- input ----------
   let drag = null;
@@ -885,11 +886,11 @@
       tip.style.top = e.clientY + 14 + 'px';
       tip.innerHTML = hover.civic
         ? (hover.civic === 'hall' ? '<b>City Hall</b><span>Settings, map, mayor & statue</span>'
-          : hover.civic === 'landmark' ? `<b>${hover.name}</b><span>Landmark · ${MAP.name}</span>`
-          : `<b>Statue of ${window.Civic.mayorName()}</b><span>Mayor of ${MAP.name}</span>`)
+          : hover.civic === 'landmark' ? `<b>${esc(hover.name)}</b><span>Landmark · ${esc(MAP.name)}</span>`
+          : `<b>Statue of ${esc(window.Civic.mayorName())}</b><span>Mayor of ${esc(MAP.name)}</span>`)
         : hover.people
-        ? `<b>${hover.name}</b><span>${hover.people.length} ${hover.people.length === 1 ? 'person' : 'people'} · ${hover.industry}</span>`
-        : `<b>${hover.person.name}</b><span>${hover.person.title} · ${hover.person.company.name}</span>`;
+        ? `<b>${esc(hover.name)}</b><span>${hover.people.length} ${hover.people.length === 1 ? 'person' : 'people'} · ${esc(hover.industry)}</span>`
+        : `<b>${esc(hover.person.name)}</b><span>${esc([hover.person.title, hover.person.company.name].filter(Boolean).join(' · '))}</span>`;
     } else tip.style.display = 'none';
   });
   canvas.addEventListener('pointerup', (e) => {

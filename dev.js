@@ -20,7 +20,8 @@ http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (api[url.pathname]) return api[url.pathname](req, res);
   const file = path.join(root, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname));
-  if (!file.startsWith(root) || file.includes(`${path.sep}.`) || file.includes(`${path.sep}api${path.sep}`)) { res.statusCode = 404; return res.end(); }
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel) || /(^|[\\/])(\.[^\\/]*|node_modules|api|package(-lock)?\.json)([\\/]|$)/.test(rel)) { res.statusCode = 404; return res.end(); }
   fs.readFile(file, (err, buf) => {
     if (err) { res.statusCode = 404; return res.end('not found'); }
     res.setHeader('Content-Type', TYPES[path.extname(file)] || 'application/octet-stream');

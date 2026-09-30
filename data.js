@@ -104,12 +104,12 @@
 
   // Micro `categories` are free-form sector tags; map them onto the city's districts.
   const SECTORS = [
-    ['Venture Capital', /venture|\bvc\b|investor|investment|capital|private equity|fund|angel/],
+    ['Venture Capital', /venture|\bvcs?\b|investors?\b|investment firm|capital\b|private equity|\bfunds?\b|angel invest/],
     ['AI / ML', /\bai\b|artificial|machine learning|\bml\b|llm|generative|computer vision|robotic/],
     ['Crypto', /crypto|web3|blockchain|defi|\bnft|bitcoin|ethereum/],
     ['Fintech', /fintech|financ|payment|bank|insur|lending|accounting|trading|wealth/],
-    ['Healthcare', /health|medic|bio|pharma|clinic|care|therap|wellness/],
-    ['Climate', /climate|energy|clean|sustainab|solar|carbon|battery|ev\b|agri/],
+    ['Healthcare', /health|medic|\bbio|pharma|clinic|\bcare\b|therap|wellness|hospital/],
+    ['Climate', /climate|energy|cleantech|clean energy|sustainab|solar|carbon|batter(y|ies)|\bevs?\b|agri/],
     ['Developer Tools', /developer|devtools|infrastructure|open source|cloud|\bapi|database|security|devops/],
     ['Media', /media|content|news|entertainment|music|publishing|podcast|video|creator|film/],
     ['Consumer', /consumer|retail|e-?commerce|food|fashion|gaming|travel|social|marketplace|beauty/],
@@ -199,7 +199,7 @@
     const real = new URLSearchParams(location.search).has('real');
     if (real) {
       const el = document.getElementById('loading');
-      if (el) el.textContent = 'Pulling your network from Micro… the first load can take ~30s';
+      if (el) el.textContent = 'Pulling your network from Micro… the very first build can take a few minutes';
       let token = null;
       try { token = localStorage.getItem('netcity.token'); } catch { /* private mode */ }
       const res = await fetch('/api/city', { headers: token ? { 'x-netcity-token': token } : {} });
@@ -209,7 +209,14 @@
       }
       const city = normalize(await res.json(), now);
       // route logos through the same-origin proxy so they can be painted into sprites
-      for (const b of city.buildings) if (b.logo) b.logo = '/api/logo?u=' + encodeURIComponent(b.logo) + (token ? '&t=' + encodeURIComponent(token) : '');
+      for (const b of city.buildings) {
+        if (!b.logo && !b.domain) continue;
+        const q = new URLSearchParams();
+        if (b.logo) q.set('u', b.logo);
+        if (b.domain) q.set('d', b.domain);
+        if (token) q.set('t', token);
+        b.logo = '/api/logo?' + q;
+      }
       return { ...city, now, demo: false };
     }
     return { ...normalize(mockRaw(now), now), now, demo: true };

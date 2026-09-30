@@ -30,7 +30,7 @@ function rebuild() {
     building = buildCity()
       .then((city) => {
         cache = { at: Date.now(), body: JSON.stringify(city) };
-        try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cache)); } catch { /* read-only fs */ }
+        try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cache), { mode: 0o600 }); } catch { /* read-only fs */ }
         console.log(`[netcity] city built in ${Math.round((Date.now() - t) / 1000)}s`);
       })
       .finally(() => { building = null; });

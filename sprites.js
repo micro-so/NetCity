@@ -705,12 +705,12 @@
     }
   }
   // Real logos (company.logo URL) load CORS-enabled so they can be baked in; failures fall back to monograms.
-  function loadLogos(companies, timeout = 2500) {
+  function loadLogos(companies, timeout = 8000) {
     return Promise.all(companies.filter((c) => c.logo).map((c) => new Promise((res) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       const done = (ok) => { if (ok) c.logoImg = img; res(); };
-      img.onload = () => done(true); img.onerror = () => done(false);
+      img.onload = () => done(img.naturalWidth > 1); img.onerror = () => done(false);
       setTimeout(() => done(false), timeout);
       img.src = c.logo;
     })));
